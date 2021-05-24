@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="liste_robots" default="[taz01]" />
+  <arg name="command_use_gt" default="true" />
+  <arg name="world_name" default="empty" />
+  <arg name="start_gazebo" default="true" />
+  
+  <include file="$(find gazebo_ros)/launch/empty_world.launch" if="$(arg start_gazebo)">
+    <arg name="world_name" value="$(arg world_name)"/>
+    <arg name="paused" value="true" />
+  </include>
+  
+  <!-- nodelet to transform dynamically gazebo joint msgs in separate odoms -->
+  <node pkg="ground_truth_manager" type="ground_truth_manager" name="ground_truth_manager" > </node>
+  
+  <!-- nodelet to simulate delay of the exchanged filter variables -->
+  <node pkg="mobile_robot_controller" type="delay_filters" name="delay_filters" ><!--launch-prefix="xterm -e gdb -ex run -args"-->
+	<rosparam param="liste_robots" subst_value="True">$(arg liste_robots)</rosparam>
+  </node>
+
+<group if="$(eval 'taz01' in arg('liste_robots'))">
+
+    <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch">
+    <arg name="robot_name" value="taz01"/>
+    <arg name="x" value="8.0"/>
+    <arg name="y" value="7.0"/>
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="1.57"/>
+  </include>
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+    <arg name="robot_name" value="taz01"/>
+    <arg name="liste_robots" default="$(arg liste_robots)" />
+    <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+    <arg name="use_controller" value="true" /> 
+    <arg name="velocity_control" value="false" />     
+  </include>
+
+</group>
+
+
+<group if="$(eval 'taz02' in arg('liste_robots'))">
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch"> 
+    <arg name="robot_name" value="taz02"/>
+    <arg name="x" value="2.0" />
+    <arg name="y" value="13.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="0.0"/>
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+      <arg name="robot_name" value="taz02"/>
+      <arg name="liste_robots" default="$(arg liste_robots)" />
+      <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+      <arg name="use_controller" value="true" />
+      <arg name="velocity_control" value="false" />
+  </include>
+
+</group>
+
+<group if="$(eval 'taz03' in arg('liste_robots'))">
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch"> 
+    <arg name="robot_name" value="taz03"/>
+    <arg name="x" value="2.0" />
+    <arg name="y" value="9.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="-0.393"/>
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+      <arg name="robot_name" value="taz03"/>
+      <arg name="liste_robots" default="$(arg liste_robots)" />
+      <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+      <arg name="use_controller" value="true" />
+      <arg name="velocity_control" value="false" />
+  </include>
+
+</group>
+
+<group if="$(eval 'taz04' in arg('liste_robots'))">
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch"> 
+    <arg name="robot_name" value="taz04"/>
+    <arg name="x" value="-2.0" />
+    <arg name="y" value="6.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="0.393"/>
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+      <arg name="robot_name" value="taz04"/>
+      <arg name="liste_robots" default="$(arg liste_robots)" />
+      <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+      <arg name="use_controller" value="true" />
+      <arg name="velocity_control" value="false" />
+  </include>
+
+</group>
+
+<group if="$(eval 'taz05' in arg('liste_robots'))">
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch"> 
+    <arg name="robot_name" value="taz05"/>
+    <arg name="x" value="1.0" />
+    <arg name="y" value="3.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="-0.393"/>
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+      <arg name="robot_name" value="taz05"/>
+      <arg name="liste_robots" default="$(arg liste_robots)" />
+      <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+      <arg name="use_controller" value="true" />
+      <arg name="velocity_control" value="false" />
+  </include>
+
+</group>
+
+<group if="$(eval 'taz06' in arg('liste_robots'))">
+
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/spawn_p3dx.launch"> 
+    <arg name="robot_name" value="taz06"/>
+    <arg name="x" value="4.0" />
+    <arg name="y" value="4.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="yaw" value="-0.393"/>
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/pioneer_3dx/p3dx_control.launch">
+      <arg name="robot_name" value="taz06"/>
+      <arg name="liste_robots" default="$(arg liste_robots)" />
+      <arg name="command_use_gt" value="$(arg command_use_gt)" /> 
+      <arg name="use_controller" value="true" />
+      <arg name="velocity_control" value="false" />
+  </include>
+
+</group>
+
+</launch>

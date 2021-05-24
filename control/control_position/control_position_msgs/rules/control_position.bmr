@@ -1,0 +1,30 @@
+class update_control_position_ControllerFeedback_1d479013c6eb66263b47401420cb9146(MessageUpdateRule):
+	old_type = "control_position/ControllerFeedback"
+	old_full_text = """
+float64[4] errors
+bool waypoint_xy_ok
+bool waypoint_z_ok
+bool waypoint_yaw_ok
+"""
+
+	new_type = "control_position/ControllerFeedback"
+	new_full_text = """
+int32 id_cmd
+float64[4] errors
+bool waypoint_xy_ok
+bool waypoint_z_ok
+bool waypoint_yaw_ok
+"""
+
+	order = 0
+	migrated_types = []
+
+	valid = True
+
+	def update(self, old_msg, new_msg):
+		#No matching field name in old message
+		new_msg.id_cmd = -1
+		new_msg.errors = old_msg.errors
+		new_msg.waypoint_xy_ok = old_msg.waypoint_xy_ok
+		new_msg.waypoint_z_ok = old_msg.waypoint_z_ok
+		new_msg.waypoint_yaw_ok = old_msg.waypoint_yaw_ok

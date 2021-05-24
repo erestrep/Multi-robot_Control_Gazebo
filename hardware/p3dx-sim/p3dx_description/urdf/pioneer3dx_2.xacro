@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<!-- 
+This is the xacro description of a Pioneer 3DX, to be used in rviz and gazebo.
+Copyright (C) 2013 Rafael Berkvens rafael.berkvens@uantwerpen.be
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+This project is based on work by Tracy Davies, where it was in turn based on
+work original in ucs-ros-pkg.
+ -->
+<robot name="pioneer3dx" 
+	xmlns:xacro="http://www.ros.org/wiki/xacro">
+	
+	<xacro:arg name="namespace" default="p3dx" />
+	<xacro:arg name="have_rotors" default="true"/>
+	<xacro:arg name="mount_visual_sensor" default="false"/>
+	<xacro:arg name="enable_ground_truth" default="true"/>
+
+	<!-- import the pioneer 3dx's wheels -->
+	<xacro:include filename="$(find p3dx_description)/urdf/pioneer3dx_wheel_2.urdf.xacro" />
+	
+	<xacro:property name="namespace" default="$(arg namespace)" />
+	
+	<link name="${namespace}/base_link"/>
+
+  <xacro:p3dx namespace="${namespace}" parent="${namespace}/base_link">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:p3dx>
+
+	<!-- Add Motor controller -->
+    <gazebo>
+      <plugin name="ros_control" filename="libgazebo_ros_control.so">
+        <robotNamespace>/$(arg namespace)</robotNamespace>
+      </plugin>
+    </gazebo>
+	
+	<!-- sensors (two version hector or rotors) -->
+	<!-- using hector stack -->
+	 <xacro:unless value="$(arg have_rotors)">
+	   <gazebo>
+		  <plugin name="imu_controller" filename="libhector_gazebo_ros_imu.so">
+		  <robotNamespace>/$(arg namespace)</robotNamespace>
+			<updateRate>50.0</updateRate>
+			<bodyName>${namespace}/base_link</bodyName>
+			<topicName>imu/data</topicName>
+			<accelDrift>0.005 0.005 0.005</accelDrift>
+			<accelGaussianNoise>0.005 0.005 0.005</accelGaussianNoise>
+			<rateDrift>0.005 0.005 0.005 </rateDrift>
+			<rateGaussianNoise>0.005 0.005 0.005 </rateGaussianNoise>
+			<headingDrift>0.005</headingDrift>
+			<headingGaussianNoise>0.005</headingGaussianNoise>
+		  </plugin>
+		</gazebo>
+
+		<gazebo>
+		  <plugin name="gps_controller" filename="libhector_gazebo_ros_gps.so">
+			<updateRate>40</updateRate>
+		  <robotNamespace>/$(arg namespace)</robotNamespace>
+			<bodyName>${namespace}/base_link</bodyName>
+			<!-- <frameId>base_link</frameId> -->
+			<frameId>world</frameId>
+			<topicName>navsat/fix</topicName>
+			<velocityTopicName>navsat/vel</velocityTopicName>
+			<referenceLatitude>48.7167</referenceLatitude>
+			<referenceLongitude>2.25</referenceLongitude>
+			<referenceHeading>0</referenceHeading>
+			<referenceAltitude>0</referenceAltitude>
+			<drift>0.0001 0.0001 0.0001</drift>
+		  </plugin>
+		</gazebo>
+	</xacro:unless >
+
+	<!-- using hector stack -->
+	<xacro:if value="$(arg have_rotors)">
+		<xacro:include filename="$(find rotors_description)/urdf/component_snippets.xacro" />
+		
+		<xacro:default_imu namespace="${namespace}" parent_link="${namespace}/base_link" />
+
+		  <!-- TODO set realistic noise -->
+		  <xacro:odometry_plugin_macro
+			namespace="${namespace}/stereo"
+			odometry_sensor_suffix=""
+			parent_link="${namespace}/base_link"
+			pose_topic="pose"
+			pose_with_covariance_topic="pose_with_covariance"
+			position_topic="position"
+			transform_topic="transform"
+			odometry_topic="odometry"
+			parent_frame_id="world"
+			child_frame_id="${namespace}/base_link"
+			mass_odometry_sensor="0.00001"
+			measurement_divisor="1"
+			measurement_delay="0"
+			unknown_delay="0.0"
+			noise_normal_position="0 0 0"
+			noise_normal_quaternion="0 0 0"
+			noise_normal_linear_velocity="0 0 0"
+			noise_normal_angular_velocity="0 0 0"
+			noise_uniform_position="0 0 0"
+			noise_uniform_quaternion="0 0 0"
+			noise_uniform_linear_velocity="0 0 0"
+			noise_uniform_angular_velocity="0 0 0"
+			enable_odometry_map="false"
+			odometry_map=""
+			image_scale="">
+			<inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" /> <!-- [kg m^2] [kg m^2] [kg m^2] [kg m^2] [kg m^2] [kg m^2] -->
+			<origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+		  </xacro:odometry_plugin_macro>
+
+		<xacro:if value="$(arg enable_ground_truth)">
+			<xacro:ground_truth_imu_and_odometry namespace="${namespace}" parent_link="${namespace}/base_link" />
+		</xacro:if>
+		
+		<xacro:default_gps namespace="${namespace}" parent_link="${namespace}/base_link" />
+		<xacro:default_magnetometer namespace="${namespace}" parent_link="${namespace}/base_link" />
+	</xacro:if>
+	
+	<xacro:if value="$(arg mount_visual_sensor)">
+		<!-- front_sonar -->
+		<link name="front_sonar">
+			<inertial>
+				<mass value="0.0001" />
+				<origin xyz="0 0 0" />
+				<inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1" />
+			</inertial>
+			<visual>
+				<origin rpy="0 0 0" xyz="0 0 0" />
+				<geometry name="pioneer_geom">
+					<mesh filename="package://p3dx_description/meshes/front_sonar.stl" />
+				</geometry>
+				<material name="SonarYellow"></material>
+			</visual>
+			<collision>
+				<origin rpy="0 0 0" xyz="0 0 0" />
+				<geometry>
+					<box size="0.00001 0.00001 0.00001" />
+				</geometry>
+			</collision>
+		</link>
+		<joint name="base_front_joint" type="fixed">
+			<origin rpy="0 0 0" xyz="0.109 0 0.209" />
+			<parent link="${namespace}/base_link" />
+			<child link="front_sonar" />
+		</joint>
+		
+		<!-- lms100 laser -->
+		<link name="lms100">
+			<inertial>
+				<mass value="1e-5" />
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6" />
+			</inertial>
+			<visual>
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<geometry>
+					<mesh filename="package://p3dx_description/meshes/lms100.dae" />
+				</geometry>
+			</visual>
+			<collision>
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<geometry>
+					<box size="0.1 0.1 0.1" />
+				</geometry>
+			</collision>
+		</link>
+		<joint name="lms100_joint" type="fixed">
+			<axis xyz="0 1 0" />
+			<origin xyz="0.12 0 0.26" rpy="0 0 0" />
+			<parent link="${namespace}/base_link" />
+			<child link="lms100" />
+		</joint>
+	</xacro:if>
+</robot>

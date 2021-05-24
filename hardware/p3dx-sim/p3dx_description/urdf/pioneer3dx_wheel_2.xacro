@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<robot name="pioneer3dx"  xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="namespace" default="p3dx" />
+    
+  <xacro:include filename="$(find p3dx_description)/urdf/pioneer3dx_wheel_2.urdf.xacro" />
+
+  <xacro:p3dx namespace="${namespace}"/>
+
+  <gazebo>
+    <plugin name="ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>/$(arg namespace)</robotNamespace>
+    </plugin>
+  </gazebo>
+
+</robot>

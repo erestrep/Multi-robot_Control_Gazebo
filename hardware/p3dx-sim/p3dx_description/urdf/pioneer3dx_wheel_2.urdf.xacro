@@ -1,0 +1,307 @@
+<?xml version="1.0"?>
+<!-- 
+This is the xacro description of a wheel of the Pioneer 3DX.
+Copyright (C) 2013 Rafael Berkvens rafael.berkvens@uantwerpen.be
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+This project is based on work by Tracy Davies, where it was in turn based on
+work original in ucs-ros-pkg.
+ -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+	<!-- properties (constants) -->
+	<xacro:property name="M_PI" value="3.14159" />
+	<!-- right/left hubcap + wheel -->
+	<xacro:macro name="p3dx_wheel" params="namespace suffix parent reflect">
+		<!-- wheel -->
+		<link name="${namespace}/p3dx_${suffix}_wheel">
+			<inertial>
+				<mass value="0.5" />
+				<origin xyz="0 0 0" />
+				<inertia ixx="0.012411765597" ixy="0" ixz="0" iyy="0.015218160428" iyz="0" izz="0.011763977943" />
+			</inertial>
+			<visual>
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<geometry name="pioneer_geom">
+					<mesh filename="package://p3dx_description/meshes/${suffix}_wheel.stl" />
+				</geometry>
+				<material name="WheelBlack"></material>
+			</visual>
+			<collision>
+				<origin xyz="0 0 0" rpy="${-3.1415927/2} 0 0" />
+				<geometry>
+					<!--<mesh filename="package://p3dx_description/meshes/${suffix}_wheel.stl"/> -->
+					<cylinder radius="0.09" length="0.01" />
+				</geometry>
+			</collision>
+		</link>
+		<joint name="${namespace}/base_${suffix}_hubcap_joint" type="fixed">
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<parent link="${namespace}/p3dx_${suffix}_wheel" />
+			<child link="${namespace}/p3dx_${suffix}_hubcap" />
+		</joint>
+		<!-- hubcap -->
+		<link name="${namespace}/p3dx_${suffix}_hubcap">
+			<inertial>
+				<mass value="0.01" />
+				<origin xyz="0 0 0" />
+				<inertia ixx="0.012411765597" ixy="0" ixz="0" iyy="0.015218160428" iyz="0" izz="0.011763977943" />
+			</inertial>
+			<visual>
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<geometry name="pioneer_geom">
+					<mesh filename="package://p3dx_description/meshes/${suffix}_hubcap.stl" />
+				</geometry>
+				<material name="HubcapYellow"></material>
+			</visual>
+			<collision>
+				<origin xyz="0 0 0" rpy="0 0 0" />
+				<geometry>
+					<box size="0.00001 0.00001 0.00001" />
+				</geometry>
+			</collision>
+		</link>
+		<joint name="${namespace}/base_${suffix}_wheel_joint" type="continuous">
+			<axis xyz="0 1 0" />
+			<anchor xyz="0 0 0" />
+			<limit effort="100" velocity="100" />
+			<joint_properties damping="0.01" friction="0.1" />
+			<origin xyz="0 ${reflect*0.158} 0.091" rpy="0 0 0" />
+			<parent link="${parent}" />
+			<child link="${namespace}/p3dx_${suffix}_wheel" />
+		</joint>
+		<!-- gazebo elements -->
+		<transmission name="${namespace}/base_${suffix}_wheel_trans">
+			<type>pr2_mechanism_model/SimpleTransmission</type>
+			<joint name="${namespace}/base_${suffix}_wheel_joint">
+				<hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+			</joint>
+			<actuator name="${namespace}/base_${suffix}_wheel_motor">
+				<hardwareInterface>EffortJointInterface</hardwareInterface>
+				<mechanicalReduction>${reflect * 624/35 * 80/19}</mechanicalReduction>
+			</actuator>
+		</transmission>
+		<gazebo reference="${namespace}/p3dx_${suffix}_hubcap">
+			<material>Gazebo/Yellow</material>
+		</gazebo>
+		<gazebo reference="${namespace}/p3dx_${suffix}_wheel">
+			<material>Gazebo/Black</material>
+			<mu1>0.5</mu1>
+			<mu2>50.0</mu2>
+			<kp>100000000.0</kp>
+			<kd>1.0</kd>
+		</gazebo>
+	</xacro:macro>
+	
+	<!-- Robot Macro -->
+<xacro:macro name="p3dx" params="namespace">
+
+	<!-- chassis -->
+	<link name="${namespace}/base_link">
+		<inertial>
+			<mass value="3.5" />
+			<!--<origin xyz="-0.025 0 -0.223"/> -->
+			<origin xyz="-0.05 0 0" />
+			<inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1" />
+		</inertial>
+		<visual>
+			<origin xyz="-0.045 0 0.148" rpy="0 0 0" />
+			<geometry name="pioneer_geom">
+				<mesh filename="package://p3dx_description/meshes/chassis.stl" />
+			</geometry>
+			<material name="ChassisRed"></material>
+		</visual>
+		<collision>
+			<origin xyz="-0.045 0 0.145" rpy="0 0 0" />
+			<geometry>
+				<box size="0.35 0.25 0.14" />
+			</geometry>
+		</collision>
+	</link>
+
+	<gazebo reference="${namespace}/base_link">
+		<material>Gazebo/Red</material>
+	</gazebo>
+	
+	<!-- top_plate -->
+	<link name="${namespace}/top_plate">
+		<inertial>
+			<mass value="0.01" />
+			<origin xyz="0 0 0" />
+			<inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1" />
+		</inertial>
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry name="top_geom">
+				<mesh filename="package://p3dx_description/meshes/top.stl" />
+			</geometry>
+			<material name="TopBlack"></material>
+		</visual>
+		<collision>
+			<origin xyz="0.0 0 0" rpy="0 0 0" />
+			<geometry name="pioneer_geom">
+				<box size="0.45 0.38 0.01" />
+			</geometry>
+		</collision>
+	</link>
+	<joint name="${namespace}/base_top_joint" type="fixed">
+		<origin xyz="-0.045 0 0.234" rpy="0 0 0" />
+		<parent link="${namespace}/base_link" />
+		<child link="${namespace}/top_plate" />
+	</joint>
+	<gazebo reference="${namespace}/top_plate">
+		<material>Gazebo/Black</material>
+	</gazebo>
+	<!-- swivel -->
+	<link name="${namespace}/swivel">
+		<inertial>
+			<mass value="0.1" />
+			<origin xyz="0 0 0" />
+			<inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+		</inertial>
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry name="pioneer_geom">
+				<mesh filename="package://p3dx_description/meshes/swivel.stl" />
+			</geometry>
+			<material name="swivel"></material>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry>
+				<box size="0.00001 0.00001 0.00001" />
+			</geometry>
+		</collision>
+	</link>
+	<joint name="${namespace}/base_swivel_joint" type="fixed">
+		<origin xyz="-0.185 0 0.055" rpy="0 0 0" />
+		<axis xyz="0 0 1" />
+		<anchor xyz="0 0 0" />
+		<limit effort="100" velocity="100" k_velocity="0" />
+		<joint_properties damping="0.0" friction="0.0" />
+		<parent link="${namespace}/base_link" />
+		<child link="${namespace}/swivel" />
+	</joint>
+	<gazebo reference="${namespace}/swivel">
+		<material>Gazebo/Grey</material>
+	</gazebo>
+	<!-- center_hubcap -->
+	<link name="${namespace}/center_hubcap">
+		<inertial>
+			<mass value="0.01" />
+			<origin xyz="0 0 0" />
+			<inertia ixx="0.012411765597" ixy="-0.000711733678" ixz="0.00050272983" iyy="0.015218160428" iyz="-0.000004273467" izz="0.011763977943" />
+		</inertial>
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry name="pioneer_geom">
+				<mesh filename="package://p3dx_description/meshes/center_hubcap.stl" />
+			</geometry>
+			<material name="swivel"></material>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry>
+				<box size="0.00001 0.00001 0.00001" />
+			</geometry>
+		</collision>
+	</link>
+	<joint name="${namespace}/swivel_hubcap_joint" type="fixed">
+		<origin xyz="-0.026 0 -0.016" rpy="0 0 0" />
+		<axis xyz="0 1 0" />
+		<anchor xyz="0 0 0" />
+		<limit effort="100" velocity="100" k_velocity="0" />
+		<joint_properties damping="0.0" friction="0.0" />
+		<parent link="${namespace}/swivel" />
+		<child link="${namespace}/center_wheel" />
+	</joint>
+	<gazebo reference="${namespace}/center_hubcap">
+		<material>Gazebo/Grey</material>
+	</gazebo>
+	<!-- center_wheel -->
+	<link name="${namespace}/center_wheel">
+		<inertial>
+			<mass value="1.0" />
+			<origin xyz="0 0 0" />
+			<inertia ixx="0.012411765597" ixy="-0.000711733678" ixz="0.00050272983" iyy="0.015218160428" iyz="-0.000004273467" izz="0.011763977943" />
+		</inertial>
+		<visual>
+			<origin xyz="0 0 0" rpy="0 0 0" />
+			<geometry name="pioneer_geom">
+				<mesh filename="package://p3dx_description/meshes/center_wheel.stl" />
+			</geometry>
+			<material name="WheelBlack"></material>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0" rpy="${-3.1415927/2.0} 0 0" />
+			<geometry>
+				<cylinder radius="0.0375" length="0.01" />
+			</geometry>
+		</collision>
+	</link>
+	<joint name="${namespace}/center_wheel_joint" type="fixed">
+		<origin xyz="-0.0035 0 -0.001" rpy="0 0 0"/>
+		<parent link="${namespace}/center_wheel"/>
+		<child link="${namespace}/center_hubcap"/>
+	</joint>
+	<gazebo reference="${namespace}/center_wheel">
+		<material>Gazebo/Black</material>
+		<mu1>0.0</mu1>
+		<mu2>0.0</mu2>
+		<kp>1000000.0</kp>
+		<kd>1.0</kd>
+	</gazebo>
+	
+	<!-- front_sonar -->
+		<link name="${namespace}/front_sonar">
+			<inertial>
+				<mass value="0.0001" />
+				<origin xyz="0 0 0" />
+				<inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1" />
+			</inertial>
+			<visual>
+				<origin rpy="0 0 0" xyz="0 0 0" />
+				<geometry name="pioneer_geom">
+					<mesh filename="package://p3dx_description/meshes/front_sonar.stl" />
+				</geometry>
+				<material name="SonarYellow"></material>
+			</visual>
+			<collision>
+				<origin rpy="0 0 0" xyz="0 0 0" />
+				<geometry>
+					<box size="0.00001 0.00001 0.00001" />
+				</geometry>
+			</collision>
+		</link>
+		<joint name="${namespace}/base_front_joint" type="fixed">
+			<origin rpy="0 0 0" xyz="0.109 0 0.209" />
+			<parent link="${namespace}/base_link" />
+			<child link="${namespace}/front_sonar" />
+		</joint>
+		<!-- front_sonar -->
+		<gazebo reference="${namespace}/front_sonar">
+			<material value="Gazebo/Yellow" />
+		</gazebo>
+</xacro:macro>
+
+	<!-- End of Legacy for diff drive plugin
+	https://github.com/ros-simulation/gazebo_ros_pkgs/pull/707/files
+	"This setting assumes you have a old package, where the right and left wheel are changed to fix a former code issue\n"
+	"To get rid of this error just set <legacyMode> to false if you just created a new package.\n"
+	"To fix an old package you have to exchange left wheel by the right wheel.\n"
+	-->
+	<xacro:p3dx_wheel namespace="${namespace}" suffix="left" parent="${namespace}/base_link" reflect="-1"/>
+	<xacro:p3dx_wheel namespace="${namespace}" suffix="right" parent="${namespace}/base_link" reflect="1"/>
+
+</robot>

@@ -1,0 +1,29 @@
+<package>
+
+  <name>copernic_gazebo</name>
+  <version>1.0.0</version>
+  <description>The mav_description package provides URDF models of the AscTec multicopters.</description>
+
+  <maintainer email="alexandre.eudes@onera.fr">Alexandre Eudes</maintainer>
+
+  <author>Alexandre Eudes</author>
+  <author>Julien Moras</author>
+
+  <license>ARR</license>
+
+  <url type="website"></url>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <run_depend>rotors_gazebo</run_depend>
+  
+  <!-- For accessing textures etc -->
+  <run_depend>gazebo_ros</run_depend>
+  <build_depend>gazebo_ros</build_depend>
+  
+  <export>
+    <gazebo_ros gazebo_media_path="${prefix}"/>
+    <gazebo_ros gazebo_model_path="${prefix}/models" />
+  </export>
+</package>

@@ -1,0 +1,6 @@
+bool stay_in_place
+bool resume
+bool deny_mocap
+# add mode ?
+---
+bool ok

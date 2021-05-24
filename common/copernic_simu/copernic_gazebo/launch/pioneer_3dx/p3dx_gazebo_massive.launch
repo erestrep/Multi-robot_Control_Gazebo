@@ -1,0 +1,129 @@
+<?xml version="1.0"?>
+<launch>
+
+  <arg name="robot_name" default="taz" />
+  <arg name="multi" default="true" />
+  <arg name="ground_truth" default="true" />
+  <arg name="world_name" default="empty" />
+  <arg name="tf_prefix" default="$(arg robot_name)"/>
+  
+  <param name="capability_group" value="model" />
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="worlds/$(arg world_name).world"/>
+    <!-- <arg name="debug" value="true" /> -->
+    <arg name="paused" value="true" />
+    <!-- <arg name="gui" value="false" /> -->
+  </include>
+  
+  <!-- nodelet to transform dynamically gazebo joint msgs in separate odoms -->
+  <node pkg="ground_truth_manager" type="ground_truth_manager" name="ground_truth_manager" > </node>
+
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch">
+    <arg name="robot_name" value="$(arg robot_name)01"/>
+    <arg name="x" value="0.0"/>
+    <arg name="y" value="0.0"/>
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)02"/>
+    <arg name="x" value="0.0" />
+    <arg name="y" value="1.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)03"/>
+    <arg name="x" value="0.0" />
+    <arg name="y" value="2.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)04"/>
+    <arg name="x" value="1.0" />
+    <arg name="y" value="0.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)05"/>
+    <arg name="x" value="1.0" />
+    <arg name="y" value="1.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)06"/>
+    <arg name="x" value="1.0" />
+    <arg name="y" value="2.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)07"/>
+    <arg name="x" value="2.0" />
+    <arg name="y" value="0.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)08"/>
+    <arg name="x" value="2.0" />
+    <arg name="y" value="1.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)09"/>
+    <arg name="x" value="2.0" />
+    <arg name="y" value="2.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)10"/>
+    <arg name="x" value="3.0" />
+    <arg name="y" value="0.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)11"/>
+    <arg name="x" value="3.0" />
+    <arg name="y" value="1.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+  
+  <include file="$(find copernic_gazebo)/launch/wifibot/spawn_wifibot.launch" if="$(arg multi)"> 
+    <arg name="robot_name" value="$(arg robot_name)12"/>
+    <arg name="x" value="3.0" />
+    <arg name="y" value="2.0" />
+    <arg name="z" value="0.1"/>
+    <arg name="ground_truth" default="$(arg ground_truth)" />
+    <arg name="use_controller" value="false" />
+  </include>
+
+</launch>

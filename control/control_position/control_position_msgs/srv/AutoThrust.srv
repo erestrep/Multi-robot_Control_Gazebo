@@ -1,0 +1,4 @@
+float32 thrust_cmd
+float32 time_in_sec
+---
+bool ok

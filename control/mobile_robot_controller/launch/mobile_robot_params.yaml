@@ -1,0 +1,19 @@
+Te : 0.05
+gain_rotation : 0.1
+gain_vitesse : 0.1
+vitesse_max : 1
+vitesse_angulaire_max : 2.0
+threshold_distance : 0.05
+threshold_yaw : 1.0
+threshold_waypoints : 0.3
+
+HorizonPrediction : 100
+HorizonControl : 5
+nb_cmd_v : 1
+nb_cmd_w : 15
+w_nav : 1.0
+w_obs : 100.0
+d_des_xy : 0.6
+d_des_z : 0.15
+d_safe_xy : 0.4
+robot_height : 0.4

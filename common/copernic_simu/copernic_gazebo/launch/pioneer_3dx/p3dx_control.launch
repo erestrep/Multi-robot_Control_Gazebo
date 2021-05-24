@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+
+<launch>
+  <arg name="robot_name" default="p3dx"/>
+  <arg name="namespace" default="$(arg robot_name)"/>
+  <arg name="use_controller" default="true" />
+  <arg name="command_use_gt" default="true" />
+  <arg name="liste_robots" default="[taz01,taz02]" /> 
+  <arg name="velocity_control"  default="false" />
+    
+  <!-- Load controllers parameters -->
+<!--
+  <rosparam command="load" file="$(find copernic_gazebo)/launch/pioneer_3dx/control.yaml" ns="$(arg namespace)" subst_value="True"/>
+-->
+  <rosparam command="load" file="$(find copernic_gazebo)/launch/pioneer_3dx/pioneer3dx.yaml" ns="$(arg namespace)" subst_value="True"/>
+  
+  <!-- Setup correct remaped tf link -->
+<!--
+  <param name="$(arg namespace)/velocity_controller/base_frame_id" value="$(arg robot_name)/base_link_weel"/>
+  <param name="$(arg namespace)/velocity_controller/odom_frame_id" value="$(arg robot_name)/odom"/>
+-->
+  
+  <!--<rosparam param="p3dx_velocity_controller/base_frame_id" subst_value="True">$(arg tfprefix)/base_link</rosparam>-->
+  
+  <!--node pkg="tf" type="static_transform_publisher" name="world_broadcaster" ns="$(arg robot_name)" args="0 0 0.0 0 0 0 world $(arg robot_name)/odom 1"> <param name="capability_group" value="/$(arg robot_name)"/> </node-->
+<!--
+  <rosparam subst_value="True" param="$(arg namespace)/velocity_controller" >
+    left_wheel: '$(arg namespace)/base_left_wheel_joint'
+    right_wheel: '$(arg namespace)/base_right_wheel_joint'
+  </rosparam>  
+-->
+
+  <!-- Spawn controllers -->
+  <node name="spawner" pkg="controller_manager" type="spawner" ns="$(arg namespace)" args="joint_state_controller joint1_effort_controller joint2_effort_controller"/>
+<!--
+  <node name="spawner" pkg="controller_manager" type="spawner" ns="$(arg namespace)" args="joint_state_controller velocity_controller"/>
+-->
+
+  <!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen"  ns="$(arg namespace)">
+  </node>
+  
+  <group ns="$(arg namespace)">
+  <!-- use controller -->
+    <node pkg="mobile_robot_controller" type="mobile_robot_controller" name="mobile_robot_controller" if="$(arg use_controller)"><!-- launch-prefix="xterm -e gdb -ex run -args" -->
+<!--
+     <rosparam command="load" file="$(find mobile_robot_controller)/launch/mobile_robot_params.yaml"/>
+-->
+     <remap from="~odometry" to="/$(arg robot_name)/velocity_controller/odom" unless="$(arg command_use_gt)"/>
+     <remap from="~odometry" to="/$(arg robot_name)/odometry" if="$(arg command_use_gt)"/>
+     <remap from="~cmd_vel" to="/$(arg robot_name)/velocity_controller/cmd_vel" /> 
+     <remap from="~left_command" to="/$(arg robot_name)/joint1_effort_controller/command" /> 
+     <remap from="~right_command" to="/$(arg robot_name)/joint2_effort_controller/command" /> 
+     <remap from="~start_goal" to="start_goal"/>        
+     <remap from="~cmd_mode" to="/cmd_mode" />  
+     <remap from="~filters" to="/$(arg robot_name)/mobile_robot_controller/undelayed_filters"/>
+     <rosparam param="liste_robots" subst_value="True">$(arg liste_robots)</rosparam>
+     <rosparam param="velocity_control" subst_value="True">$(arg velocity_control)</rosparam>
+     <param name="tracking_mode" value="false" />
+     <param name="obstacle_avoidance" value="false" />
+     <param name="capability_group" value="control" />
+    </node>
+  </group>
+
+  
+</launch>

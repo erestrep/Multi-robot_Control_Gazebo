@@ -1,0 +1,49 @@
+class update_control_position_ControllerMode_eed966a8c0d32c942c676ccd6fcc73a9(MessageUpdateRule):
+  old_type = "control_position/ControllerMode"
+  old_full_text = """
+int32 controller_id
+bool control_xy
+bool control_z
+bool control_yaw
+
+## error threshold
+float32 threshold_xy
+float32 threshold_z
+float32 threshold_yaw
+"""
+
+  new_type = "control_position/ControllerMode"
+  new_full_text = """
+# -1 = keep same controller on the axis
+int32 control_xy
+int32 control_z
+int32 control_yaw
+
+## error threshold
+float32 threshold_xy
+float32 threshold_z
+float32 threshold_yaw
+"""
+
+  order = 0
+  migrated_types = []
+
+  valid = True
+
+  def update(self, old_msg, new_msg):
+    # Primitive type changed
+    new_msg.control_xy = -1
+    new_msg.control_z = -1
+    new_msg.control_yaw = -1
+    if old_msg.control_xy:
+      new_msg.control_xy = old_msg.controller_id
+    if old_msg.control_z:
+      new_msg.control_z = old_msg.controller_id
+    if old_msg.control_yaw:
+      new_msg.control_yaw = old_msg.controller_id
+    new_msg.control_z = 0
+    new_msg.control_yaw = 0
+    new_msg.threshold_xy = old_msg.threshold_xy
+    new_msg.threshold_z = old_msg.threshold_z
+    new_msg.threshold_yaw = old_msg.threshold_yaw
+    #No field to match field controller_id from old message

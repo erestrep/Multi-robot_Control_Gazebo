@@ -1,0 +1,8 @@
+[control_position/ControllerFeedback]:
+float64[4] errors
+bool waypoint_xy_ok
+bool waypoint_z_ok
+bool waypoint_yaw_ok
+
+
+

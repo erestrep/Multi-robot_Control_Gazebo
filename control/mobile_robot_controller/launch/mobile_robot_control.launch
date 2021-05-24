@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<launch>
+
+  <node pkg="mobile_robot_controller" type="mobile_robot_controller" name="mobile_robot_controller" output="screen">
+    <remap from="~mapping_stack/get_gradient" to ="mapping_stack/get_gradient"/>
+	<param name="capability_group" value="control_command" />
+    <rosparam param="liste_robots">[taz01,taz03]</rosparam>
+  </node>
+
+</launch>
+

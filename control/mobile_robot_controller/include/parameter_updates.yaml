@@ -1,0 +1,25 @@
+'! Publish rate': latch
+dynamic_reconfigure/Config:
+  bools:
+  - name: obstacle_avoidance
+    value: true
+  doubles:
+  - name: vitesse_max
+    value: 2.0
+  - name: vitesse_angulaire__max
+    value: 5.0
+  - name: gain_rotation
+    value: 1.0
+  - name: gain_vitesse
+    value: 1.0
+  - name: threshold_distance
+    value: 0.01
+  - name: threshold_yaw
+    value: 1.0
+  - name: threshold_waypoints
+    value: 0.3
+  groups:
+  - id: 0
+    name: Default
+    parent: 0
+    state: true
