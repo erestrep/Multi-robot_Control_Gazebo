@@ -22,6 +22,7 @@ class Communicator
         ros::Subscriber activation_sub_;
         bool my_status_, applyCtrlFlag_;
         int my_index_;
+        int nb_neighbors_;
         
         std::vector<ros::Subscriber> sub_filters_;
         std::vector<std_msgs::Float32MultiArray> filters_;
@@ -52,6 +53,7 @@ class Communicator
 			if(have_param){
 				std::vector<std::string> liste_rob;
 				int nb_robots = liste_robots.size();
+				nb_neighbors_ = nb_robots - 1;
 				my_index_ = -1;
 
 				if(nb_robots > 1){   
@@ -118,6 +120,7 @@ class Communicator
 		
 		void filtersCallback(const std_msgs::Float32MultiArrayConstPtr& filter, int neighbor_number){filters_[neighbor_number] = *filter;};
 		std::vector<std_msgs::Float32MultiArray> getNeighborsFilters(){return filters_;};
+		int getNbNeighbors(){return nb_neighbors_;};
 		
 		void activation_callback(const std_msgs::Bool& activation_bool){applyCtrlFlag_ = activation_bool.data;};
 		bool getMyMode(){return applyCtrlFlag_;};

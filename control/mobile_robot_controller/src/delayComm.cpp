@@ -54,7 +54,7 @@ void DelaySimulator::filtersCallback(const std_msgs::Float32MultiArrayConstPtr& 
 	filters_[robot_number] = *filter;
 	
 	Eigen::Vector3f filter_var;					
-	filter_var << filters_[robot_number].data[0], filters_[robot_number].data[2], filters_[robot_number].data[4];
+	filter_var << filters_[robot_number].data[0], filters_[robot_number].data[1], filters_[robot_number].data[2];
 	
 	//Time
 	double t = ros::Time::now().toSec();
@@ -69,41 +69,50 @@ void DelaySimulator::filtersCallback(const std_msgs::Float32MultiArrayConstPtr& 
 
 void DelaySimulator::delayFilters(const ros::TimerEvent& event)
 {	// apply variable delay to the filter signals
-    double current_delay = randomGaussianDelay(0.5,0.0003);
-    current_delay += -0.2;
+    std::vector<double> current_delay;
+    current_delay.resize(nb_robots_);    
+    for (size_t k = 0; k < nb_robots_ ; k++)
+	{
+		current_delay[k] = randomGaussianDelay(0.5,0.0003);
+		current_delay[k] += -0.2;
+	}
+    
     double t = ros::Time::now().toSec();
-    double target_time = t - current_delay;
+    std::vector<double> target_time;
+    target_time.resize(nb_robots_);   
+    for (size_t k = 0; k < nb_robots_ ; k++)
+	{
+		target_time[k] = t - current_delay[k];
+	}
     
     // Vector of target filter values for each robot
 	std::vector<SFilter> closest;
 	closest.resize(nb_robots_);
     
-    if (target_time > 0){
-		for (size_t k = 0; k < nb_robots_ ; k++)
-		{
+    
+	for (size_t k = 0; k < nb_robots_ ; k++)
+	{
+		if (target_time[k] > 0){
 			int size_list = buffers_[k].list.size();
 				
 			for (size_t i = 0; i < size_list ; i++)
 			{	
-				double diffCurrent = abs(buffers_[k].list[i].time - target_time); // t - \tau(t)
+				double diffCurrent = abs(buffers_[k].list[i].time - target_time[k]); // t - \tau(t)
 				if (diffCurrent < 0.001){
 					closest[k] = buffers_[k].list[i]; // closest time-control pair
 					break;
 				} else {
-					double diffClosest = abs(closest[k].time - target_time);
+					double diffClosest = abs(closest[k].time - target_time[k]);
 					
 					if (diffCurrent < diffClosest){
 						closest[k] = buffers_[k].list[i]; // closest time-control pair
 					}
 				}
 			}
-		}
-	} else {
-		Eigen::Vector3f initialFilter;
-		initialFilter << 0.0, 0.0, 0.0;
-		SFilter initial_pair = {t,initialFilter};
-		for (size_t k = 0; k < nb_robots_ ; k++)
-		{
+		} else {
+			Eigen::Vector3f initialFilter;
+			initialFilter << 0.0, 0.0, 0.0;
+			SFilter initial_pair = {t,initialFilter};
 			closest[k] = initial_pair;
 		}
 	}

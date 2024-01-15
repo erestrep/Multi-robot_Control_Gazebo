@@ -1,7 +1,9 @@
 #include <dynamic_reconfigure/server.h>
-
+#include <algorithm>
 #include <nav_msgs/Odometry.h>
+#include <Eigen/Core>
 #include <Eigen/Geometry>
+#include <Eigen/SVD>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Pose.h>
 #include "control_position_msgs/ControllerReference.h"
@@ -26,7 +28,7 @@ class MobileRobotController
 		std::vector<std_msgs::Float32MultiArray> neighbors_filters_;
 		bool my_status_, multi_mode_;
 		
-        ros::Timer timer, timer_filter;
+        ros::Timer timer, timer_filter, timer_dynCtrl, timer_observer;
 		dynamic_reconfigure::Server<mobile_robot_controller::MobileRobotControllerConfig> server;
 		dynamic_reconfigure::Server<mobile_robot_controller::MobileRobotControllerConfig>::CallbackType f;
         
@@ -49,6 +51,18 @@ class MobileRobotController
 		Eigen::Vector2f filt_alphaw_;
 		float dvft_, dwft_, pvft_, pwft_, ka_, pe_freq_;
 		ros::Publisher pub_filters_;
+		
+		// Dynamic controllers
+		float sigma_ctrl_, xi_ctrl_;
+		float krv_, kiv_, krw_, kiw_;
+		float Te_dynCtrl_, Te_obs_;
+		ros::Publisher pub_sigma_ctrl_, pub_xi_ctrl_;
+		
+		// I&I Observer
+		float vI_, vhat_, what_, wI_, varthetaII_, rtildeII_, delta1hat_, delta2hat_, delta1I_, delta2I_;
+		float kd1_, kd2_;
+		bool immersion_;
+		ros::Publisher pub_observer_;
 
 	public:
 		MobileRobotController(ros::NodeHandle nh);
@@ -58,6 +72,7 @@ class MobileRobotController
 		void callback_reference(const control_position_msgs::ControllerReference& msg);
 		void callback_param(mobile_robot_controller::MobileRobotControllerConfig &config, uint32_t level);
         Eigen::Vector2f nominalControl(Eigen::Vector3f pose, control_position_msgs::ControllerReference ref,float threshold_yaw, bool prediction_mode);
+        Eigen::Vector2f effortControl(Eigen::Vector3f pose, Eigen::Vector2f vel_body, control_position_msgs::ControllerReference ref, double t);
 		Eigen::Vector3f calcul_angles(Eigen::Quaternionf q);
 		float saturation(float input,float sat);
         void BroadcastCurrentPose(Eigen::Vector3f pose);
@@ -65,8 +80,11 @@ class MobileRobotController
         void BroadcastCurrentOdometry(Eigen::Vector3f pose, Eigen::Vector2f vel_body);
         Eigen::Vector2f consensusControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, Eigen::MatrixXf neighbors_pose, Eigen::MatrixXf neighbors_vel_body, int nb_neighbors, double t);
         Eigen::Vector2f consensusEffortwoVelControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, int nb_neighbors, double t);
+        Eigen::Vector2f consensusEffortIIwoVelControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, int nb_neighbors, double t);
         Eigen::Vector2f consensusEffortControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, int nb_neighbors, Eigen::MatrixXf neighbors_pose, double t);
         void init_filters();
         void updateFilter(const ros::TimerEvent& event);
         void rviz_display_robot(Eigen::Vector3f pose, float range, float fov_angle);
+        void updateDynamicControl(const ros::TimerEvent& event);
+        void updateIIObserver(const ros::TimerEvent& event);
 };

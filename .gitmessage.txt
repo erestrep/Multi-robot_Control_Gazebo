@@ -1,0 +1,6 @@
+type -- feat, fix, docs, style: subject  
+
+Body -- Multi-line description of commit,
+feel free to be detailed.
+
+Footer -- reference issues

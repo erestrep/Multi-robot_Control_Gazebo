@@ -7,6 +7,8 @@ MobileRobotController::MobileRobotController(ros::NodeHandle nh)
 , Te_filter_(0.01)
 , first_odom_(false)
 , height_(0.4)
+, Te_dynCtrl_(0.005)
+, Te_obs_(0.01)
 {
   com = new Communicator(nh_);
   //Subscribers
@@ -22,6 +24,9 @@ MobileRobotController::MobileRobotController(ros::NodeHandle nh)
   rviz_marker_pub_ = nh.advertise<visualization_msgs::MarkerArray>("robot_marker",1);
   fov_pub_ = nh.advertise<std_msgs::Float32MultiArray>("fov",1);
   pub_filters_ = nh_.advertise<std_msgs::Float32MultiArray>("filters",1);
+  pub_sigma_ctrl_ = nh_.advertise<std_msgs::Float64>("sigma_dynCtrl",1);
+  pub_xi_ctrl_ = nh_.advertise<std_msgs::Float64>("xi_dynCtrl",1);
+  pub_observer_ = nh_.advertise<std_msgs::Float32MultiArray>("observer",1);
   
   //Dynamic reconfigure and params
   f = boost::bind(&MobileRobotController::callback_param,this,_1,_2);
@@ -31,6 +36,23 @@ MobileRobotController::MobileRobotController(ros::NodeHandle nh)
   filt_alphavx_ << 0.0, 0.0;
   filt_alphavy_ << 0.0, 0.0;
   filt_alphaw_ << 0.0, 0.0;
+  
+  // Init Filter variables
+  filt_alphavx_ << 0.0, 0.0;
+  filt_alphavy_ << 0.0, 0.0;
+  filt_alphaw_ << 0.0, 0.0;
+  
+  // Init dynamic Ctrl variables
+  sigma_ctrl_ = 0.0;
+  xi_ctrl_ = 0.0;
+  
+  // I&I Observer variables
+  vI_ = 0.0;
+  vhat_ = 0.0;
+  wI_ = 0.0;
+  what_ = 0.0;
+  varthetaII_ = 0.0;
+  rtildeII_ = 1.0;
   
   //init flags
   applyCtrlFlag_ = false;
@@ -49,7 +71,9 @@ MobileRobotController::MobileRobotController(ros::NodeHandle nh)
       
   //Timer
   timer = nh_.createTimer(ros::Duration(ros::Rate(1/Te_)), &MobileRobotController::updateControl, this, false, true);
+  timer_dynCtrl = nh_.createTimer(ros::Duration(ros::Rate(1/Te_dynCtrl_)), &MobileRobotController::updateDynamicControl, this, false, true);
   timer_filter = nh_.createTimer(ros::Duration(ros::Rate(1/Te_filter_)), &MobileRobotController::updateFilter, this, false, true);
+  timer_observer = nh_.createTimer(ros::Duration(ros::Rate(1/Te_obs_)), &MobileRobotController::updateIIObserver, this, false, true);
 }
  
 MobileRobotController::~MobileRobotController(){};
@@ -97,7 +121,7 @@ void MobileRobotController::updateControl(const ros::TimerEvent& event)
 			//Get neighbors odometries and status
 			neighbors_odometries_ = com->getNeighborsOdometries();
 			
-			int nb_neighbors = neighbors_odometries_.size();	
+			int nb_neighbors = com->getNbNeighbors();	
 			Eigen::MatrixXf neighbors_pose(nb_neighbors,3);
 			Eigen::MatrixXf neighbors_vel_body(nb_neighbors,2);
 			
@@ -116,13 +140,21 @@ void MobileRobotController::updateControl(const ros::TimerEvent& event)
 			if (velocity_control_){
 				cmd = consensusControl(my_index,pose_,vel_body_,neighbors_pose,neighbors_vel_body,nb_neighbors,t); // Velocity controller (with FOV and distance constraints)
 			} else {
-				cmd = consensusEffortwoVelControl(my_index,pose_,vel_body_,nb_neighbors,t); // Effort PE Controller without velocities
-				//~ cmd = consensusEffortwoVelControl(my_index,pose_,vel_body_,nb_neighbors,neighbors_pose,t); // Effort PE Controller
+				if (immersion_){
+					cmd = consensusEffortIIwoVelControl(my_index,pose_,vel_body_,nb_neighbors,t); // Effort PE Controller without velocities (Lupe)
+				} else {
+					cmd = consensusEffortwoVelControl(my_index,pose_,vel_body_,nb_neighbors,t); // Effort PE Controller without velocities
+					//~ cmd = consensusEffortControl(my_index,pose_,vel_body_,nb_neighbors,neighbors_pose,t); // Effort PE Controller
+				}
 			}
 			
 		} else {		
-			cmd = nominalControl(pose_, ref_, threshold_yaw_, false); // Velocity waypoint controller
+			if (velocity_control_){
+				cmd = nominalControl(pose_, ref_, threshold_yaw_, false); // Velocity waypoint controller
+			} else {
 			// TO DO: add single robot effort control !!!
+				cmd = effortControl(pose_, vel_body_, ref_, t); // Effort waypoint controller [Nuño]
+			}
 		}
 	}
 	
@@ -148,10 +180,24 @@ void MobileRobotController::updateControl(const ros::TimerEvent& event)
 		cmd(0) = 0.5*(mass_*wheel_radius_)*u_v + ((inertia_*wheel_radius_)/(2*wheel_separation_))*u_w;
 		cmd(1) = 0.5*(mass_*wheel_radius_)*u_v - ((inertia_*wheel_radius_)/(2*wheel_separation_))*u_w;
 		
+		float d1, d2;
+		d1 = 0.0;
+		d2 = 0.0;
+		
+		// // Uncomment for JIRS paper with Emmanuel
+		//~ // Disturbances
+		if (applyCtrlFlag_){
+			d1 = 0.07;
+			d2 = 0.03;
+		} else {
+			d1 = 0.0;
+			d2 = 0.0;
+		}
+		
 		//publish effort control
 		std_msgs::Float64 left_cmd, right_cmd;
-		left_cmd.data = cmd(0);
-		right_cmd.data = cmd(1);
+		left_cmd.data = cmd(0) + d1;
+		right_cmd.data = cmd(1) + d2;
 		pub_left_effort_.publish(left_cmd);
 		pub_right_effort_.publish(right_cmd);
 	}
@@ -196,6 +242,19 @@ void MobileRobotController::callback_param(mobile_robot_controller::MobileRobotC
   pwft_ = config.gain_p_ftw;
   ka_ = config.gain_pe;
   pe_freq_ = config.frequency_pe;
+  
+  krv_ = config.gain_k_rv;
+  krw_ = config.gain_k_rw;
+  kiv_ = config.gain_k_iv;
+  kiw_ = config.gain_k_iw;
+  
+  kd1_ = config.gain_k_d1;
+  kd2_ = config.gain_k_d2;
+  
+  if(immersion_ != config.immersion){
+      immersion_ = config.immersion; 
+      if(immersion_ == true){ROS_INFO_STREAM("I&I controller activated");}else{ROS_INFO_STREAM("I&I controller de-activated");}
+  }
 }
 
 Eigen::Vector3f MobileRobotController::calcul_angles(Eigen::Quaternionf q)
@@ -214,6 +273,10 @@ float MobileRobotController::saturation(float input, float sat)
   else if(input < -sat){output = - sat;}
   return output;	
 }
+
+//----------------------------------------------------------------------
+//----------------------Single agent controllers------------------------
+//----------------------------------------------------------------------
 
 Eigen::Vector2f MobileRobotController::nominalControl(Eigen::Vector3f pose, control_position_msgs::ControllerReference ref,float threshold_yaw,bool prediction_mode)
 {  //Basic waypoint proportional control
@@ -255,6 +318,86 @@ Eigen::Vector2f MobileRobotController::nominalControl(Eigen::Vector3f pose, cont
   
   return control_input;
 }
+
+Eigen::Vector2f MobileRobotController::effortControl(Eigen::Vector3f pose, Eigen::Vector2f vel_body, control_position_msgs::ControllerReference ref, double t)
+{    
+  Eigen::Vector2f control_input; //[v,w] to be returned
+  
+  //distance remaining
+  float error_x = pose.x() - ref.position.x;
+  float error_y = pose.y() - ref.position.y;
+  float yaw = pose.z();
+  float distance_remaining = sqrt(error_x*error_x + error_y*error_y);
+  float error_yaw = yaw - ref.yaw;
+  
+  if(error_yaw > M_PI){error_yaw = error_yaw - 2*M_PI;}else if(error_yaw <= - M_PI){error_yaw = error_yaw + 2*M_PI;}
+  
+  control_input(0) = 0.0;
+  control_input(1) = 0.0;
+  
+  float alpha_pe, pe_fnc, freq;	
+  pe_fnc = 2.5 + 3*M_PI*sin(2*t) + 0.67*sin(3*t);
+  //~ pe_fnc = 2.5 + sin(2*M_PI*pe_freq_*t) + 0.3*cos(3*2*M_PI*pe_freq_*t) - 0.5*sin(4*2*M_PI*pe_freq_*t) - 0.1*cos(5*2*M_PI*pe_freq_*t)  + sin(.5*2*M_PI*pe_freq_*t);
+	
+  alpha_pe = ka_*pe_fnc*(-sinf(yaw)*error_x+cosf(yaw)*error_y); // delta-persistently exciting term
+  
+  float u_v, u_w;	
+  u_v = 0.0;
+  u_w = 0.0;
+  
+  if(distance_remaining > threshold_distance_)
+  {
+	u_v = -dvft_*vel_body(0)-pvft_*(cosf(yaw)*error_x+sinf(yaw)*error_y) - kiv_*sigma_ctrl_; // Derivative of the linear velocity (input)
+	u_w = -dwft_*vel_body(1)-pwft_*error_yaw + alpha_pe - kiw_*xi_ctrl_; // Derivative of the angular velocity (input)
+  }
+	
+  // Inputs
+  control_input(0) = u_v;
+  control_input(1) = u_w;
+  
+  return control_input;
+}
+
+void MobileRobotController::updateDynamicControl(const ros::TimerEvent& event){
+	
+	//Time
+	double t = ros::Time::now().toSec();
+	
+	// Update variables
+	float new_sigma = 0.0;
+	float new_xi = 0.0;
+	
+	if (applyCtrlFlag_){
+		if (!multi_mode_){
+			if (!velocity_control_){
+					
+				float error_x = pose_.x() - ref_.position.x;
+				float error_y = pose_.y() - ref_.position.y;
+				float yaw = pose_.z();
+				float error_yaw = yaw - ref_.yaw;	
+					
+				// Controller variables update
+				new_sigma = sigma_ctrl_ + Te_dynCtrl_*(pvft_*(cosf(yaw)*error_x + sinf(yaw)*error_y) + krv_*vel_body_(0));
+				new_xi = xi_ctrl_ + Te_dynCtrl_*(pwft_*error_yaw + krw_*vel_body_(1)); 			
+			}
+		}
+	}
+	
+	// Assign new values
+	sigma_ctrl_ = new_sigma;
+	xi_ctrl_ = new_xi;
+
+	// Publish filter variables
+	std_msgs::Float64 sigma_msg, xi_msg;
+	sigma_msg.data = sigma_ctrl_;
+	xi_msg.data = xi_ctrl_;
+	pub_sigma_ctrl_.publish(sigma_msg);
+	pub_xi_ctrl_.publish(xi_msg);
+}
+
+//----------------------------------------------------------------------
+//----------------------Multi-agent controllers-------------------------
+//----------------------------------------------------------------------
 
 Eigen::Vector2f MobileRobotController::consensusControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, Eigen::MatrixXf neighbors_pose, Eigen::MatrixXf neighbors_vel_body, int nb_neighbors, double t)
 {
@@ -481,6 +624,74 @@ Eigen::Vector2f MobileRobotController::consensusEffortwoVelControl(int my_index,
 	return control_input;
 }
 
+Eigen::Vector2f MobileRobotController::consensusEffortIIwoVelControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, int nb_neighbors, double t)
+{
+	Eigen::Vector2f control_input; //[\tau_left,\tau_right] to be returned
+	control_input << 0.0, 0.0;
+	
+	// Desired formation displacements
+	Eigen::MatrixXf des_disp(nb_neighbors+1,2);
+	des_disp.row(0) << 2.0, 0.0;
+	des_disp.row(1) << 1.0, 2.0;
+	des_disp.row(2) << -1.0, 2.0;
+	des_disp.row(3) << -2.0, 0.0;
+	des_disp.row(4) << -1.0, -2.0;
+	des_disp.row(5) << 1.0, -2.0;
+	
+	Eigen::Vector3f bar_pose; // Error desired position
+	bar_pose << pose(0) - des_disp(my_index,0), pose(1) - des_disp(my_index,1), pose(2);
+	
+	Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
+	A.row(0) << 0.0, 1.0, 0.0, 0.0, 0.0, 1.0;
+	A.row(1) << 1.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+	A.row(2) << 0.0, 1.0, 0.0, 1.0, 0.0, 1.0;
+	A.row(3) << 0.0, 0.0, 1.0, 0.0, 1.0, 0.0;
+	A.row(4) << 0.0, 0.0, 0.0, 1.0, 0.0, 1.0;
+	A.row(5) << 1.0, 0.0, 1.0, 0.0, 1.0, 0.0;
+	
+	//~ Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
+	//~ A.row(0) << 0.0, 1.0, 1.0;
+	//~ A.row(1) << 1.0, 0.0, 1.0;
+	//~ A.row(2) << 1.0, 1.0, 0.0;
+	
+	if (filters_initialized_){
+		std::vector<std_msgs::Float32MultiArray> neighbors_filters;			
+		neighbors_filters = com->getNeighborsFilters();
+		Eigen::MatrixXf neighbors_filter_var(nb_neighbors,3);
+		for(int i=0;i<nb_neighbors;i++){			
+			neighbors_filter_var.row(i) << neighbors_filters[i].data[0],neighbors_filters[i].data[1],neighbors_filters[i].data[2];
+		}
+		
+		// Consensus term
+		float evx = 0.0;
+		float evy = 0.0;
+		float ew = 0.0;
+		int j = 0;
+		for(int i=0;i<nb_neighbors+1;i++){	
+			if (i != my_index){
+				evx += A(my_index,i)*(bar_pose(0)-neighbors_filter_var(j,0));
+				evy += A(my_index,i)*(bar_pose(1)-neighbors_filter_var(j,1));
+				ew += A(my_index,i)*(bar_pose(2)-neighbors_filter_var(j,2));
+				j++;
+			}		
+		}
+		
+		float alpha_pe, pe_fnc, freq;		
+		//~ pe_fnc = sin(2*M_PI*pe_freq_*t)+cos(3*2*M_PI*pe_freq_*t)-sin(4*2*M_PI*pe_freq_*t)-cos(5*2*M_PI*pe_freq_*t)+3+sin(0.5*2*M_PI*pe_freq_*t); // persistently exciting function
+		pe_fnc = 2.5 + sin(2*M_PI*pe_freq_*t) + 0.3*cos(3*2*M_PI*pe_freq_*t) - 0.5*sin(4*2*M_PI*pe_freq_*t) - 0.1*cos(5*2*M_PI*pe_freq_*t)  + sin(.5*2*M_PI*pe_freq_*t);
+		alpha_pe = ka_*pe_fnc*(-sinf(bar_pose(2))*evx+cosf(bar_pose(2))*evy); // delta-persistently exciting term
+		
+		float u_v, u_w;
+		u_v = -pvft_*(cosf(bar_pose(2))*evx+sinf(bar_pose(2))*evy) - dvft_*vhat_ - delta1hat_; // Derivative of the linear velocity (input)
+		u_w = -pwft_*ew + alpha_pe - dwft_*what_ - delta2hat_; // Derivative of the angular velocity (input)	
+		
+		control_input(0) = u_v;
+		control_input(1) = u_w;
+	}
+
+	return control_input;
+}
+
 Eigen::Vector2f MobileRobotController::consensusEffortControl(int my_index, Eigen::Vector3f pose, Eigen::Vector2f vel_body, int nb_neighbors, Eigen::MatrixXf neighbors_pose, double t)
 {
 	Eigen::Vector2f control_input; //[\tau_left,\tau_right] to be returned
@@ -520,11 +731,13 @@ Eigen::Vector2f MobileRobotController::consensusEffortControl(int my_index, Eige
     float evx = 0.0;
 	float evy = 0.0;
 	float ew = 0.0;
+	int j = 0;
 	for(int i=0;i<nb_neighbors+1;i++){	
 		if (i != my_index){
-			evx += A(my_index,i)*(bar_pose(0)-(neighbors_pose(i,0)-des_disp(i,0)));
-			evy += A(my_index,i)*(bar_pose(1)-(neighbors_pose(i,1)-des_disp(i,1)));
-			ew += A(my_index,i)*(bar_pose(2)-neighbors_pose(i,2));
+			evx += A(my_index,i)*(bar_pose(0)-(neighbors_pose(j,0)-des_disp(i,0)));
+			evy += A(my_index,i)*(bar_pose(1)-(neighbors_pose(j,1)-des_disp(i,1)));
+			ew += A(my_index,i)*(bar_pose(2)-neighbors_pose(j,2));
+			j++;
 		}		
 	}
 	alpha_pe = ka_*pe_fnc*(-sinf(bar_pose(2))*evx+cosf(bar_pose(2))*evy); // delta-persistently exciting term
@@ -586,45 +799,9 @@ void MobileRobotController::updateFilter(const ros::TimerEvent& event){
 					init_filters();
 					filters_initialized_ = true;
 				}
-
+				
 				int my_index = com->getMyIndex();
-				
-				//Get neighbors' filter variables
-				neighbors_filters_ = com->getNeighborsFilters();
-				
-				int nb_neighbors = neighbors_filters_.size();	
-				Eigen::MatrixXf neighbors_filter_var(nb_neighbors,3);
-				
-				for(int i=0;i<nb_neighbors;i++){			
-					neighbors_filter_var.row(i) << neighbors_filters_[i].data[0],neighbors_filters_[i].data[1],neighbors_filters_[i].data[2];
-				}		
-			
-				Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
-				A.row(0) << 0.0, 1.0, 0.0, 1.0, 0.0, 1.0;
-				A.row(1) << 1.0, 0.0, 1.0, 0.0, 0.0, 0.0;
-				A.row(2) << 0.0, 1.0, 0.0, 1.0, 0.0, 1.0;
-				A.row(3) << 1.0, 0.0, 1.0, 0.0, 1.0, 0.0;
-				A.row(4) << 0.0, 0.0, 0.0, 1.0, 0.0, 1.0;
-				A.row(5) << 1.0, 0.0, 1.0, 0.0, 1.0, 0.0;
-				
-				//~ Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
-				//~ A.row(0) << 0.0, 1.0, 0.0, 1.0, 0.0;
-				//~ A.row(1) << 1.0, 0.0, 1.0, 0.0, 0.0;
-				//~ A.row(2) << 0.0, 1.0, 0.0, 1.0, 0.0;
-				//~ A.row(3) << 1.0, 0.0, 1.0, 0.0, 1.0;
-				//~ A.row(4) << 0.0, 0.0, 0.0, 1.0, 0.0;
-				
-				// Consensus term
-				float evx = 0.0;
-				float evy = 0.0;
-				float ew = 0.0;
-				for(int i=0;i<nb_neighbors+1;i++){	
-					if (i != my_index){
-						evx += A(my_index,i)*(filt_alphavx_(0)-neighbors_filter_var(i,0));
-						evy += A(my_index,i)*(filt_alphavy_(0)-neighbors_filter_var(i,1));
-						ew += A(my_index,i)*(filt_alphaw_(0)-neighbors_filter_var(i,2));
-					}		
-				}
+				int nb_neighbors = com->getNbNeighbors();	
 					
 				Eigen::MatrixXf des_disp(nb_neighbors+1,2);
 				des_disp.row(0) << 2.0, 0.0;
@@ -637,34 +814,222 @@ void MobileRobotController::updateFilter(const ros::TimerEvent& event){
 				Eigen::Vector3f bar_pose;
 				bar_pose << pose_(0) - des_disp(my_index,0), pose_(1) - des_disp(my_index,1), pose_(2);
 					
-				// Command filter for the linear velocity
-				new_alphavx(0) = filt_alphavx_(0) + Te_filter_*filt_alphavx_(1);
-				new_alphavx(1) = filt_alphavx_(1) + Te_filter_*(- dvft_*filt_alphavx_(1) - kv_*(filt_alphavx_(0)-bar_pose(0)) - pvft_*evx); 
-				new_alphavy(0) = filt_alphavy_(0) + Te_filter_*filt_alphavy_(1);
-				new_alphavy(1) = filt_alphavy_(1) + Te_filter_*(- dvft_*filt_alphavy_(1) - kv_*(filt_alphavy_(0)-bar_pose(1)) - pvft_*evy); 
+				if (!immersion_){
 					
-				// Command filter for the angular velocity
-				new_alphaw(0) = filt_alphaw_(0) + Te_filter_*filt_alphaw_(1);
-				new_alphaw(1) = filt_alphaw_(1) + Te_filter_*(- dwft_*filt_alphaw_(1) - kw_*(filt_alphaw_(0)-bar_pose(2)) - pwft_*ew); 
-			
+					//Get neighbors' filter variables
+					neighbors_filters_ = com->getNeighborsFilters();
+					
+					Eigen::MatrixXf neighbors_filter_var(nb_neighbors,3);
+					
+					for(int i=0;i<nb_neighbors;i++){			
+						neighbors_filter_var.row(i) << neighbors_filters_[i].data[0],neighbors_filters_[i].data[1],neighbors_filters_[i].data[2];
+					}		
+				
+					Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
+					A.row(0) << 0.0, 1.0, 0.0, 0.0, 0.0, 1.0;
+					A.row(1) << 1.0, 0.0, 1.0, 0.0, 0.0, 0.0;
+					A.row(2) << 0.0, 1.0, 0.0, 1.0, 0.0, 1.0;
+					A.row(3) << 0.0, 0.0, 1.0, 0.0, 1.0, 0.0;
+					A.row(4) << 0.0, 0.0, 0.0, 1.0, 0.0, 1.0;
+					A.row(5) << 1.0, 0.0, 1.0, 0.0, 1.0, 0.0;
+					
+					//~ Eigen::MatrixXf A(nb_neighbors+1,nb_neighbors+1); //Adjacency matrix of the graph  !!!!!
+					//~ A.row(0) << 0.0, 1.0, 0.0, 1.0, 0.0;
+					//~ A.row(1) << 1.0, 0.0, 1.0, 0.0, 0.0;
+					//~ A.row(2) << 0.0, 1.0, 0.0, 1.0, 0.0;
+					//~ A.row(3) << 1.0, 0.0, 1.0, 0.0, 1.0;
+					//~ A.row(4) << 0.0, 0.0, 0.0, 1.0, 0.0;
+					
+					// Consensus term
+					float evx = 0.0;
+					float evy = 0.0;
+					float ew = 0.0;
+					int j = 0;
+					for(int i=0;i<nb_neighbors+1;i++){	
+						if (i != my_index){
+							evx += A(my_index,i)*(filt_alphavx_(0)-neighbors_filter_var(j,0));
+							evy += A(my_index,i)*(filt_alphavy_(0)-neighbors_filter_var(j,1));
+							ew += A(my_index,i)*(filt_alphaw_(0)-neighbors_filter_var(j,2));
+							j++;
+						}		
+					}
+					
+					// Command filter for the linear velocity
+					new_alphavx(0) = filt_alphavx_(0) + Te_filter_*filt_alphavx_(1);
+					new_alphavx(1) = filt_alphavx_(1) + Te_filter_*(- dvft_*filt_alphavx_(1) - kv_*(filt_alphavx_(0)-bar_pose(0)) - pvft_*evx); 
+					new_alphavy(0) = filt_alphavy_(0) + Te_filter_*filt_alphavy_(1);
+					new_alphavy(1) = filt_alphavy_(1) + Te_filter_*(- dvft_*filt_alphavy_(1) - kv_*(filt_alphavy_(0)-bar_pose(1)) - pvft_*evy); 
+						
+					// Command filter for the angular velocity
+					new_alphaw(0) = filt_alphaw_(0) + Te_filter_*filt_alphaw_(1);
+					new_alphaw(1) = filt_alphaw_(1) + Te_filter_*(- dwft_*filt_alphaw_(1) - kw_*(filt_alphaw_(0)-bar_pose(2)) - pwft_*ew); 
+					
+					// Assign new values
+					filt_alphavx_ << new_alphavx(0), new_alphavx(1);
+					filt_alphavy_ << new_alphavy(0), new_alphavy(1);
+					filt_alphaw_ << new_alphaw(0), new_alphaw(1);
+					
+				} else {					
+					new_alphavx(0) = bar_pose(0);
+					new_alphavx(1) = 0.0;
+					new_alphavy(0) = bar_pose(1);
+					new_alphavy(1) = 0.0;
+					new_alphaw(0) = bar_pose(2);
+					new_alphaw(1) = 0.0;
+					
+					// Assign new values
+					filt_alphavx_ << new_alphavx(0), new_alphavx(1);
+					filt_alphavy_ << new_alphavy(0), new_alphavy(1);
+					filt_alphaw_ << new_alphaw(0), new_alphaw(1);
+				}
 			}
 		}
 	} else {
 		filters_initialized_ = false;
 	}
-	
-	// Assign new values
-	filt_alphavx_ << new_alphavx(0), new_alphavx(1);
-	filt_alphavy_ << new_alphavy(0), new_alphavy(1);
-	filt_alphaw_ << new_alphaw(0), new_alphaw(1);
 
 	// Publish filter variables
 	std_msgs::Float32MultiArray ft_msg;
-	ft_msg.data.push_back(new_alphavx(0));
-	ft_msg.data.push_back(new_alphavy(0));
-	ft_msg.data.push_back(new_alphaw(0));
+	ft_msg.data.push_back(filt_alphavx_(0));
+	ft_msg.data.push_back(filt_alphavy_(0));
+	ft_msg.data.push_back(filt_alphaw_(0));
 	pub_filters_.publish(ft_msg);	
-	//~ ROS_INFO_STREAM("I'm here 3" << ft_msg);
+	ROS_INFO_STREAM("I'm here 3" << ft_msg);
+}
+
+void MobileRobotController::updateIIObserver(const ros::TimerEvent& event){
+	
+	//Time
+	double t = ros::Time::now().toSec();
+	
+	// Update variables
+	float new_vhat = 0.0;
+	float new_what = 0.0;
+	float new_vI = 0.0;
+	float new_wI = 0.0;
+	float new_delta1I = 0.0;
+	float new_delta2I = 0.0;
+	float new_vartheta = 0.0;
+	float new_rtilde = 0.0;
+	
+	if (applyCtrlFlag_){
+		if (multi_mode_){
+			if (!velocity_control_){
+				if (immersion_){
+					if (filters_initialized_){
+						float vP, wP, delta1P, delta2P;
+						
+						vP = kv_*(cosf(varthetaII_)*pose_.x()+sinf(varthetaII_)*pose_.y());
+						wP = kw_*pose_.z();
+						delta1P = kd1_*(cosf(varthetaII_)*pose_.x()+sinf(varthetaII_)*pose_.y());
+						delta2P = kd2_*pose_.z();
+						
+						vhat_ = vI_ + vP;
+						what_ = wI_ + wP;
+						delta1hat_ = delta1I_ + delta1P;
+						delta2hat_ = delta2I_ + delta2P;
+						
+						int my_index = com->getMyIndex();
+						int nb_neighbors = com->getNbNeighbors();	
+						
+						Eigen::Vector2f cmd;
+						cmd << 0.0, 0.0;
+						cmd = consensusEffortIIwoVelControl(my_index,pose_,vel_body_,nb_neighbors,t);
+							
+						// Publish controller variables
+						geometry_msgs::Twist ctrl;
+						ctrl.linear.x = cmd(0);
+						ctrl.angular.z = cmd(1);
+						pub_cmd_consensus_.publish(ctrl);
+						
+						//~ ROS_INFO_STREAM("I'm here " << my_index);
+							
+						// Observer variables update
+						float lambda1 = -kv_*0.5 + 0.5*sqrtf(powf(kv_,2.0)-4*kd1_);
+						float lambda2 = -kv_*0.5 - 0.5*sqrtf(powf(kv_,2.0)-4*kd1_);
+						
+						float k1 = - std::max(lambda1,lambda2);
+						float k3 = kv_; //0.25*kv_;
+						float k2 = krv_;
+						ROS_INFO_STREAM("k1: " << k1 << " lambda1: " << lambda1 << " lambda2: " << lambda2);
+						
+						float error_theta = varthetaII_-pose_.z();
+						if(error_theta > M_PI){error_theta = error_theta - 2*M_PI;}else if(error_theta <= - M_PI){error_theta = error_theta + 2*M_PI;}
+						
+						float Deltav;
+						Deltav = ((cosf(varthetaII_)-cosf(pose_.z()))*cosf(pose_.z())+(sinf(varthetaII_)-sinf(pose_.z()))*sinf(pose_.z()));
+						
+						Eigen::MatrixXf M(2,2); 
+						M.row(0) << -kv_, 0.0;
+						M.row(1) << -kd1_, 0.0;
+						
+						Eigen::MatrixXf Em(2,2); 
+						Em.row(0) << kd1_/sqrtf(powf(kv_,2.0)-4*kd1_), 0.5 - 0.5*kv_/sqrtf(powf(kv_,2.0)-4*kd1_);
+						Em.row(1) << -kd1_/sqrtf(powf(kv_,2.0)-4*kd1_), 0.5 + 0.5*kv_/sqrtf(powf(kv_,2.0)-4*kd1_);
+						
+						Eigen::MatrixXf Em_inv(2,2); 
+						Em_inv.row(0) << 0.5*(kv_+sqrtf(powf(kv_,2.0)-4*kd1_))/kd1_, 0.5*(kv_-sqrtf(powf(kv_,2.0)-4*kd1_))/kd1_;
+						Em_inv.row(1) << 1.0, 1.0;
+						
+						Eigen::MatrixXf Mm = Em*M*Em_inv;
+						Eigen::JacobiSVD<Eigen::MatrixXf> svd(Mm, Eigen::ComputeThinV | Eigen::ComputeThinU);
+						Eigen::VectorXf S = svd.singularValues();
+						float max_sv_Mm;
+						max_sv_Mm = S(0);
+						
+						float gamma = k2 + 0.5 + (2/k1)*rtildeII_*(rtildeII_+1)*powf(max_sv_Mm,2);
+						
+						new_vartheta = varthetaII_ + Te_obs_*(-gamma*(error_theta)+what_);
+						new_vI = vI_ + Te_obs_*(-kv_*(-sinf(varthetaII_)*pose_.x()+cosf(varthetaII_)*pose_.y())*(-gamma*(varthetaII_-pose_.z())+what_)-kv_*(cosf(varthetaII_)*cosf(pose_.z())+sinf(varthetaII_)*sinf(pose_.z()))*vhat_+cmd(0)+delta1hat_);
+						new_wI = wI_ + Te_obs_*(-kw_*what_+cmd(1)+delta2hat_);
+						new_delta1I = delta1I_ + Te_obs_*(-kd1_*(-sinf(varthetaII_)*pose_.x()+cosf(varthetaII_)*pose_.y())*(-gamma*(varthetaII_-pose_.z())+what_)-kd1_*(cosf(varthetaII_)*cosf(pose_.z())+sinf(varthetaII_)*sinf(pose_.z()))*vhat_);
+						new_delta2I = delta2I_ + Te_obs_*(-kd2_*what_);
+						new_rtilde = rtildeII_ + Te_obs_*(-0.25*k1*rtildeII_+(1/(2*k1))*powf((Deltav*max_sv_Mm),2.0)*(rtildeII_+1));
+						
+						//~ new_vhat = new_vI + vP;
+						//~ new_what = new_wI + wP;
+						
+						if(new_vartheta > M_PI){new_vartheta = new_vartheta - 2*M_PI;}else if(new_vartheta <= - M_PI){new_vartheta = new_vartheta + 2*M_PI;}
+						
+						// Assign new values
+						//~ vhat_ = new_vhat;
+						//~ what_ = new_what;
+						vI_ = new_vI;
+						wI_ = new_wI;
+						delta1I_ = new_delta1I;
+						delta2I_ = new_delta2I;
+						varthetaII_ = new_vartheta;
+						rtildeII_ = new_rtilde;
+					}
+				}		
+			}
+		}
+	} else {
+		vI_ = 0.0;
+		vhat_ = 0.0;
+		wI_ = 0.0;
+		what_ = 0.0;
+		varthetaII_ = 0.0;
+		rtildeII_ = 1.0;
+		delta1I_ = 0.0;
+		delta2I_ = 0.0;
+		delta1hat_ = 0.0;
+		delta2hat_ = 0.0;
+	}
+
+	// Publish filter variables
+	std_msgs::Float32MultiArray obs_msg;
+	obs_msg.data.push_back(vhat_);
+	obs_msg.data.push_back(what_);
+	obs_msg.data.push_back(vI_);
+	obs_msg.data.push_back(wI_);
+	obs_msg.data.push_back(delta1hat_);
+	obs_msg.data.push_back(delta2hat_);
+	obs_msg.data.push_back(delta1I_);
+	obs_msg.data.push_back(delta2I_);
+	obs_msg.data.push_back(varthetaII_);
+	obs_msg.data.push_back(rtildeII_);
+	pub_observer_.publish(obs_msg);
 }
 
 void MobileRobotController::BroadcastCurrentOdometry(Eigen::Vector3f pose, Eigen::Vector2f vel_body)
